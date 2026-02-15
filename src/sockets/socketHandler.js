@@ -1,3 +1,6 @@
+import Conversation from "../models/Conversation.js";
+import Message from "../models/Message.js";
+
 const onlineUsers = new Map();
 
 const socketHandler = (io) => {
@@ -8,15 +11,37 @@ const socketHandler = (io) => {
       onlineUsers.set(userId, socket.id);
     });
 
-    socket.on("send-message", ({ senderId, receiverId, text }) => {
-      const receiverSocket = onlineUsers.get(receiverId);
+    socket.on("send-message", async ({ senderId, receiverId, text }) => {
+      // find existing conversation
+      let conversation = await Conversation.findOne({
+        participants: { $all: [senderId, receiverId] },
+      });
 
-      if (receiverSocket) {
-        io.to(receiverSocket).emit("receive-message", {
-          senderId,
-          text,
+      // create if first message
+      if (!conversation) {
+        conversation = await Conversation.create({
+          participants: [senderId, receiverId],
         });
       }
+
+      // save message
+      const message = await Message.create({
+        conversation: conversation._id,
+        sender: senderId,
+        text,
+      });
+
+      // update last message
+      conversation.lastMessage = text;
+      await conversation.save();
+
+      // emit to receiver
+      const receiverSocket = onlineUsers.get(receiverId);
+      if (receiverSocket) {
+        io.to(receiverSocket).emit("receive-message", message);
+      }
+
+      socket.emit("receive-message", message);
     });
 
     socket.on("disconnect", () => {
