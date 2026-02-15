@@ -1,18 +1,24 @@
+import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 
 export const getMessages = async (req, res) => {
   try {
     const { userId } = req.params;
 
-    const message = await Message.find({
-      $or: [
-        { sender: req.user._id, receiver: userId },
-        { sender: userId, receiver: req.user._id },
-      ],
+    const conversation = await Conversation.findOne({
+      participants: { $all: [req.user._id, userId] },
+    });
+
+    if (!conversation) {
+      return res.json([]);
+    }
+
+    const messages = await Message.find({
+      conversation: conversation._id,
     }).sort({ createdAt: 1 });
 
-    return res.json(message);
+    return res.json(messages);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
