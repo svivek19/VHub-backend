@@ -8,10 +8,15 @@ const socketHandler = (io) => {
     console.log("User connected:", socket.id);
 
     socket.on("user-connected", (userId) => {
-      onlineUsers.set(userId, socket.id);
+      onlineUsers.set(String(userId), socket.id);
     });
 
     socket.on("send-message", async ({ senderId, receiverId, text }) => {
+      console.log({
+        senderId,
+        receiverId,
+        onlineUsers: [...onlineUsers.entries()],
+      });
       // find existing conversation
       let conversation = await Conversation.findOne({
         participants: { $all: [senderId, receiverId] },
