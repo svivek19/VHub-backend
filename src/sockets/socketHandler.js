@@ -57,6 +57,30 @@ const socketHandler = (io) => {
         }
       }
     });
+
+    socket.on("typing", ({ senderId, receiverId }) => {
+      const receiverSocket = onlineUsers.get(String(receiverId));
+
+      if (receiverSocket) {
+        io.to(receiverSocket).emit("typing", {
+          senderId,
+        });
+      }
+    });
+
+    socket.on("mark-seen", async ({ conversationId }) => {
+      console.log("MARK SEEN:", conversationId);
+
+      await Message.updateMany(
+        {
+          conversation: conversationId,
+          seen: false,
+        },
+        { seen: true },
+      );
+
+      io.emit("messages-seen", { conversationId: String(conversationId) });
+    });
   });
 };
 
