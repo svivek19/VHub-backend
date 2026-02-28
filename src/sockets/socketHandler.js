@@ -9,6 +9,8 @@ const socketHandler = (io) => {
 
     socket.on("user-connected", (userId) => {
       onlineUsers.set(String(userId), socket.id);
+
+      io.emit("online-users", Array.from(onlineUsers.keys()));
     });
 
     socket.on("send-message", async ({ senderId, receiverId, text }) => {
@@ -44,6 +46,11 @@ const socketHandler = (io) => {
       const receiverSocket = onlineUsers.get(receiverId);
       if (receiverSocket) {
         io.to(receiverSocket).emit("receive-message", message);
+
+        io.to(receiverSocket).emit("unread-message", {
+          senderId,
+          conversationId: conversation._id,
+        });
       }
 
       socket.emit("receive-message", message);
@@ -56,6 +63,8 @@ const socketHandler = (io) => {
           break;
         }
       }
+
+      io.emit("online-users", Array.from(onlineUsers.keys()));
     });
 
     socket.on("typing", ({ senderId, receiverId }) => {
