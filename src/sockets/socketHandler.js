@@ -1,5 +1,6 @@
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
+import User from "../models/User.js";
 
 const onlineUsers = new Map();
 
@@ -7,8 +8,13 @@ const socketHandler = (io) => {
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
-    socket.on("user-connected", (userId) => {
+    socket.on("user-connected", async (userId) => {
       onlineUsers.set(String(userId), socket.id);
+
+      await User.findByIdAndUpdate(userId, {
+        isOnline: true,
+        lastSeen: new Date(),
+      });
 
       io.emit("online-users", Array.from(onlineUsers.keys()));
     });
@@ -56,10 +62,15 @@ const socketHandler = (io) => {
       socket.emit("receive-message", message);
     });
 
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       for (const [userId, socketId] of onlineUsers.entries()) {
         if (socketId === socket.id) {
           onlineUsers.delete(userId);
+
+          await User.findByIdAndUpdate(userId, {
+            isOnline: false,
+            lastSeen: new Date(),
+          });
           break;
         }
       }

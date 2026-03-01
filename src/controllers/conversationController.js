@@ -5,7 +5,7 @@ export const getConversations = async (req, res) => {
     const conversations = await Conversation.find({
       participants: req.user._id,
     })
-      .populate("participants", "name email avatar")
+      .populate("participants", "name email lastSeen isOnline")
       .sort({ updatedAt: -1 });
 
     return res.json(conversations);
