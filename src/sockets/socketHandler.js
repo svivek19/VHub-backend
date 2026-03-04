@@ -3,6 +3,7 @@ import Message from "../models/Message.js";
 import User from "../models/User.js";
 
 const onlineUsers = new Map();
+const activeChats = new Map();
 
 const socketHandler = (io) => {
   io.on("connection", (socket) => {
@@ -53,10 +54,14 @@ const socketHandler = (io) => {
       if (receiverSocket) {
         io.to(receiverSocket).emit("receive-message", message);
 
-        io.to(receiverSocket).emit("unread-message", {
-          senderId,
-          conversationId: conversation._id,
-        });
+        const activeConversation = activeChats.get(String(receiverId));
+
+        if (activeConversation !== String(conversation._id)) {
+          io.to(receiverSocket).emit("unread-message", {
+            senderId,
+            conversationId: conversation._id,
+          });
+        }
       }
 
       socket.emit("receive-message", message);

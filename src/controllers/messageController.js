@@ -13,6 +13,17 @@ export const getMessages = async (req, res) => {
       return res.json([]);
     }
 
+    await Message.updateMany(
+      {
+        conversation: conversation._id,
+        sender: { $ne: req.user._id },
+        seen: false,
+      },
+      {
+        $set: { seen: true },
+      },
+    );
+
     const messages = await Message.find({
       conversation: conversation._id,
     }).sort({ createdAt: 1 });
