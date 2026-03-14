@@ -106,6 +106,31 @@ const socketHandler = (io) => {
 
       io.emit("messages-seen", { conversationId: String(conversationId) });
     });
+
+    socket.on("delete-message", async ({ messageId, type, userId }) => {
+      const message = await Message.findById(messageId);
+
+      if (!message) return;
+
+      if (type === "everyone") {
+        message.isDeletedForEveryone = true;
+        message.text = "This message was deleted";
+      }
+
+      if (type === "me") {
+        if (!message.deletedFor.includes(userId)) {
+          message.deletedFor.push(userId);
+        }
+      }
+
+      await message.save();
+
+      io.emit("message-deleted", {
+        messageId,
+        type,
+        userId,
+      });
+    });
   });
 };
 
