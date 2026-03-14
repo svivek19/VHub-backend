@@ -131,6 +131,36 @@ const socketHandler = (io) => {
         userId,
       });
     });
+
+    socket.on("react-message", async ({ messageId, userId, emoji }) => {
+      const message = await Message.findById(messageId);
+      if (!message) return;
+
+      const existingIndex = message.reactions.findIndex(
+        (r) => String(r.user) === String(userId),
+      );
+
+      if (existingIndex !== -1) {
+        // same emoji → remove reaction
+        if (message.reactions[existingIndex].emoji === emoji) {
+          message.reactions.splice(existingIndex, 1);
+        }
+        // different emoji → update
+        else {
+          message.reactions[existingIndex].emoji = emoji;
+        }
+      } else {
+        // new reaction
+        message.reactions.push({ user: userId, emoji });
+      }
+
+      await message.save();
+
+      io.emit("message-reacted", {
+        messageId,
+        reactions: message.reactions,
+      });
+    });
   });
 };
 

@@ -23,6 +23,18 @@ const messageSchema = mongoose.Schema(
       default: false,
     },
 
+    reactions: [
+      {
+        user: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        emoji: {
+          type: String,
+        },
+      },
+    ],
+
     deletedFor: [
       {
         type: mongoose.Schema.Types.ObjectId,
