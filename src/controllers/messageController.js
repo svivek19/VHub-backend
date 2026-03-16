@@ -31,6 +31,7 @@ export const getMessages = async (req, res) => {
       conversation: conversation._id,
       deletedFor: { $ne: req.user._id },
     })
+      .populate("replyTo", "text sender")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));

@@ -20,52 +20,56 @@ const socketHandler = (io) => {
       io.emit("online-users", Array.from(onlineUsers.keys()));
     });
 
-    socket.on("send-message", async ({ senderId, receiverId, text }) => {
-      console.log({
-        senderId,
-        receiverId,
-        onlineUsers: [...onlineUsers.entries()],
-      });
-      // find existing conversation
-      let conversation = await Conversation.findOne({
-        participants: { $all: [senderId, receiverId] },
-      });
-
-      // create if first message
-      if (!conversation) {
-        conversation = await Conversation.create({
-          participants: [senderId, receiverId],
+    socket.on(
+      "send-message",
+      async ({ senderId, receiverId, text, replyTo }) => {
+        console.log({
+          senderId,
+          receiverId,
+          onlineUsers: [...onlineUsers.entries()],
         });
-      }
+        // find existing conversation
+        let conversation = await Conversation.findOne({
+          participants: { $all: [senderId, receiverId] },
+        });
 
-      // save message
-      const message = await Message.create({
-        conversation: conversation._id,
-        sender: senderId,
-        text,
-      });
-
-      // update last message
-      conversation.lastMessage = text;
-      await conversation.save();
-
-      // emit to receiver
-      const receiverSocket = onlineUsers.get(receiverId);
-      if (receiverSocket) {
-        io.to(receiverSocket).emit("receive-message", message);
-
-        const activeConversation = activeChats.get(String(receiverId));
-
-        if (activeConversation !== String(conversation._id)) {
-          io.to(receiverSocket).emit("unread-message", {
-            senderId,
-            conversationId: conversation._id,
+        // create if first message
+        if (!conversation) {
+          conversation = await Conversation.create({
+            participants: [senderId, receiverId],
           });
         }
-      }
 
-      socket.emit("receive-message", message);
-    });
+        // save message
+        const message = await Message.create({
+          conversation: conversation._id,
+          sender: senderId,
+          text,
+          replyTo: replyTo || null,
+        });
+
+        // update last message
+        conversation.lastMessage = text;
+        await conversation.save();
+
+        // emit to receiver
+        const receiverSocket = onlineUsers.get(receiverId);
+        if (receiverSocket) {
+          io.to(receiverSocket).emit("receive-message", message);
+
+          const activeConversation = activeChats.get(String(receiverId));
+
+          if (activeConversation !== String(conversation._id)) {
+            io.to(receiverSocket).emit("unread-message", {
+              senderId,
+              conversationId: conversation._id,
+            });
+          }
+        }
+
+        socket.emit("receive-message", message);
+      },
+    );
 
     socket.on("disconnect", async () => {
       for (const [userId, socketId] of onlineUsers.entries()) {

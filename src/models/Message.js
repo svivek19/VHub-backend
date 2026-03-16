@@ -1,4 +1,4 @@
-import mongoose from "mongoose";
+import mongoose, { mongo } from "mongoose";
 
 const messageSchema = mongoose.Schema(
   {
@@ -14,10 +14,17 @@ const messageSchema = mongoose.Schema(
       required: true,
     },
 
+    replyTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+      default: null,
+    },
+
     text: {
       type: String,
       required: true,
     },
+
     seen: {
       type: Boolean,
       default: false,
