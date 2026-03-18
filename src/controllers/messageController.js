@@ -4,6 +4,7 @@ import Message from "../models/Message.js";
 export const getMessages = async (req, res) => {
   try {
     const { userId } = req.params;
+    const search = req.query.search || "";
 
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
@@ -22,21 +23,37 @@ export const getMessages = async (req, res) => {
         sender: { $ne: req.user._id },
         seen: false,
       },
-      {
-        $set: { seen: true },
-      },
+      { $set: { seen: true } },
     );
 
-    const messages = await Message.find({
+    const query = {
       conversation: conversation._id,
       deletedFor: { $ne: req.user._id },
-    })
+    };
+
+    if (search) {
+      query.text = {
+        $regex: search,
+        $options: "i",
+        isDeletedForEveryone: { $ne: true },
+      };
+    }
+
+    if (search) {
+      const messages = await Message.find(query)
+        .populate("replyTo", "text sender")
+        .sort({ createdAt: 1 });
+
+      return res.json(messages);
+    }
+
+    const messages = await Message.find(query)
       .populate("replyTo", "text sender")
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
-      .limit(Number(limit));
+      .limit(limit);
 
-    return res.json(messages);
+    return res.json(messages.reverse());
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
