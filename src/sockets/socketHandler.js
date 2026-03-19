@@ -71,6 +71,34 @@ const socketHandler = (io) => {
       },
     );
 
+    socket.on("update-message-image", async ({ tempId, messageId, image }) => {
+      try {
+        let message;
+
+        if (messageId) {
+          message = await Message.findByIdAndUpdate(
+            messageId,
+            { image },
+            { new: true },
+          );
+        } else {
+          message = null;
+        }
+
+        if (!message) {
+          return;
+        }
+
+        io.emit("message-image-updated", {
+          tempId,
+          messageId: String(message._id),
+          image: message.image,
+        });
+      } catch (err) {
+        console.error("update-message-image error:", err);
+      }
+    });
+
     socket.on("disconnect", async () => {
       for (const [userId, socketId] of onlineUsers.entries()) {
         if (socketId === socket.id) {

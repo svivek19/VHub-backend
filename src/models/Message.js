@@ -22,7 +22,13 @@ const messageSchema = mongoose.Schema(
 
     text: {
       type: String,
-      required: true,
+      required: false,
+      default: "",
+    },
+
+    image: {
+      type: String,
+      default: null,
     },
 
     seen: {
