@@ -125,6 +125,16 @@ const socketHandler = (io) => {
       }
     });
 
+    socket.on("stop-typing", ({ senderId, receiverId }) => {
+      const receiverSocket = onlineUsers.get(String(receiverId));
+
+      if (receiverSocket) {
+        io.to(receiverSocket).emit("stop-typing", {
+          senderId,
+        });
+      }
+    });
+
     socket.on("mark-seen", async ({ conversationId }) => {
       console.log("MARK SEEN:", conversationId);
 
