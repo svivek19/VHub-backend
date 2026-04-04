@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
@@ -5,11 +6,18 @@ import User from "../models/User.js";
 const onlineUsers = new Map();
 const activeChats = new Map();
 
+const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
+
 const socketHandler = (io) => {
   io.on("connection", (socket) => {
     console.log("User connected:", socket.id);
 
     socket.on("user-connected", async (userId) => {
+      if (!isValidId(userId)) {
+        console.log("Invalid userId:", userId);
+        return;
+      }
+
       onlineUsers.set(String(userId), socket.id);
 
       await User.findByIdAndUpdate(userId, {
