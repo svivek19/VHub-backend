@@ -11,9 +11,10 @@ dotenv.config();
 
 const MONGO_URI = process.env.MONGO_URI;
 
-// CONFIG
-const OTHER_USERS = 120;
-const MESSAGES_PER_CONVO = 500;
+// ================= CONFIG =================
+const OTHER_USERS = 500; // 500 users
+const MESSAGES_PER_CONVO = 2000; // 500 * 2000 = 1,000,000
+const BATCH_SIZE = 1000; // SAFE for Atlas
 
 const EMOJIS = ["👍", "❤️", "😂", "🔥", "😮", "😢"];
 
@@ -21,11 +22,13 @@ async function seed() {
   console.time("Seeding Time");
 
   await mongoose.connect(MONGO_URI);
-  console.log("DB connected:", MONGO_URI);
+  console.log("DB connected");
 
-  await User.deleteMany();
-  await Conversation.deleteMany();
-  await Message.deleteMany();
+  await Promise.all([
+    User.deleteMany(),
+    Conversation.deleteMany(),
+    Message.deleteMany(),
+  ]);
 
   const hashedPassword = await bcrypt.hash("password123", 10);
 
@@ -53,125 +56,100 @@ async function seed() {
     })),
   );
 
-  console.log("Users created:", otherUsers.length + 1);
+  console.log("Users:", otherUsers.length + 1);
 
   // ========================
-  // 3️⃣ CREATE CONVERSATIONS
+  // 3️⃣ CONVERSATIONS
   // ========================
-  const conversations = otherUsers.map((user) => ({
-    participants: [mainUser._id, user._id],
-    lastMessage: "",
-  }));
+  const conversations = await Conversation.insertMany(
+    otherUsers.map((user) => ({
+      participants: [mainUser._id, user._id],
+      lastMessage: "",
+    })),
+  );
 
-  const createdConvos = await Conversation.insertMany(conversations);
-
-  console.log("Conversations created:", createdConvos.length);
+  console.log("Conversations:", conversations.length);
 
   // ========================
-  // 4️⃣ CREATE ALL MESSAGES (BULK)
+  // 4️⃣ MESSAGES (STREAMING)
   // ========================
-  let allMessages = [];
+  let totalMessages = 0;
 
-  for (let i = 0; i < createdConvos.length; i++) {
-    const convo = createdConvos[i];
+  for (let i = 0; i < conversations.length; i++) {
+    const convo = conversations[i];
     const otherUser = otherUsers[i];
+
+    let batch = [];
+    let lastMessageText = "";
 
     for (let j = 0; j < MESSAGES_PER_CONVO; j++) {
       const isMainSender = Math.random() < 0.5;
+      const sender = isMainSender ? mainUser._id : otherUser._id;
 
-      allMessages.push({
-        conversation: convo._id,
-        sender: isMainSender ? mainUser._id : otherUser._id,
-        text: faker.lorem.sentence(),
-        seen: !isMainSender,
-        createdAt: faker.date.recent({ days: 7 }),
-      });
-    }
-  }
+      const text = faker.lorem.sentence();
 
-  const createdMessages = await Message.insertMany(allMessages);
-  console.log("Messages created:", createdMessages.length);
+      // random reply (lightweight)
+      const replyTo =
+        Math.random() < 0.1 && batch.length > 0
+          ? batch[Math.floor(Math.random() * batch.length)]._id
+          : null;
 
-  // ========================
-  // 5️⃣ BULK UPDATE (REPLIES + REACTIONS)
-  // ========================
-  const bulkOps = [];
-
-  for (let msg of createdMessages) {
-    let update = {};
-
-    // reply
-    if (Math.random() < 0.15) {
-      const randomMsg =
-        createdMessages[Math.floor(Math.random() * createdMessages.length)];
-      update.replyTo = randomMsg._id;
-    }
-
-    // reactions
-    if (Math.random() < 0.3) {
-      const reactions = [];
-      const count = Math.floor(Math.random() * 3) + 1;
-
-      for (let i = 0; i < count; i++) {
-        reactions.push({
-          user:
-            Math.random() < 0.5
-              ? mainUser._id
-              : faker.helpers.arrayElement(otherUsers)._id,
-          emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
-        });
+      // random reactions
+      let reactions = [];
+      if (Math.random() < 0.25) {
+        const count = Math.floor(Math.random() * 2) + 1;
+        for (let k = 0; k < count; k++) {
+          reactions.push({
+            user: Math.random() < 0.5 ? mainUser._id : otherUser._id,
+            emoji: EMOJIS[Math.floor(Math.random() * EMOJIS.length)],
+          });
+        }
       }
 
-      update.reactions = reactions;
-    }
-
-    if (Object.keys(update).length > 0) {
-      bulkOps.push({
-        updateOne: {
-          filter: { _id: msg._id },
-          update: { $set: update },
-        },
+      batch.push({
+        conversation: convo._id,
+        sender,
+        text,
+        seen: !isMainSender,
+        createdAt: faker.date.recent({ days: 7 }),
+        replyTo,
+        reactions,
       });
+
+      lastMessageText = text;
+
+      // 🚀 INSERT BATCH
+      if (batch.length === BATCH_SIZE) {
+        await Message.insertMany(batch);
+        totalMessages += batch.length;
+        batch = [];
+      }
     }
-  }
 
-  if (bulkOps.length > 0) {
-    await Message.bulkWrite(bulkOps);
-  }
+    // insert remaining
+    if (batch.length > 0) {
+      await Message.insertMany(batch);
+      totalMessages += batch.length;
+    }
 
-  console.log("Reactions + replies added");
-
-  // ========================
-  // 6️⃣ UPDATE LAST MESSAGE (BULK)
-  // ========================
-  const convoBulk = [];
-
-  for (let convo of createdConvos) {
-    const lastMsg = createdMessages.find(
-      (m) => String(m.conversation) === String(convo._id),
+    // update last message (NO find, O(1))
+    await Conversation.updateOne(
+      { _id: convo._id },
+      { $set: { lastMessage: lastMessageText } },
     );
 
-    if (lastMsg) {
-      convoBulk.push({
-        updateOne: {
-          filter: { _id: convo._id },
-          update: { $set: { lastMessage: lastMsg.text } },
-        },
-      });
+    // progress log
+    if ((i + 1) % 50 === 0) {
+      console.log(`Processed ${i + 1}/${conversations.length} convos`);
     }
   }
 
-  if (convoBulk.length > 0) {
-    await Conversation.bulkWrite(convoBulk);
-  }
-
-  console.log("Last messages updated");
+  console.log("Total messages:", totalMessages);
 
   console.timeEnd("Seeding Time");
 
   await mongoose.disconnect();
-
-  console.log("DONE");
+  console.log("DONE ✅");
 }
 
 seed().catch(console.error);

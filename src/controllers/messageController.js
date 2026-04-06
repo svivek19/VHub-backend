@@ -11,20 +11,20 @@ export const getMessages = async (req, res) => {
 
     const conversation = await Conversation.findOne({
       participants: { $all: [req.user._id, userId] },
-    });
+    }).lean();
 
     if (!conversation) {
       return res.json([]);
     }
 
-    await Message.updateMany(
+    Message.updateMany(
       {
         conversation: conversation._id,
         sender: { $ne: req.user._id },
         seen: false,
       },
       { $set: { seen: true } },
-    );
+    ).exec();
 
     const query = {
       conversation: conversation._id,
@@ -35,14 +35,14 @@ export const getMessages = async (req, res) => {
       query.text = {
         $regex: search,
         $options: "i",
-        isDeletedForEveryone: { $ne: true },
       };
     }
 
     if (search) {
       const messages = await Message.find(query)
         .populate("replyTo", "text sender")
-        .sort({ createdAt: 1 });
+        .sort({ createdAt: 1 })
+        .lean();
 
       return res.json(messages);
     }
@@ -50,8 +50,9 @@ export const getMessages = async (req, res) => {
     const messages = await Message.find(query)
       .populate("replyTo", "text sender")
       .sort({ createdAt: -1 })
+      .limit(limit)
       .skip((page - 1) * limit)
-      .limit(limit);
+      .lean();
 
     return res.json(messages.reverse());
   } catch (error) {

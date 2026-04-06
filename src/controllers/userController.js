@@ -5,7 +5,9 @@ export const getAllUsers = async (req, res) => {
   try {
     const users = await User.find({
       _id: { $ne: req.user._id },
-    }).select("-password");
+    })
+      .select("name email lastSeen isOnline")
+      .lean();
 
     return res.status(200).json(users);
   } catch (error) {
