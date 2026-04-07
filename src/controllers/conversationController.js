@@ -1,4 +1,5 @@
 import Conversation from "../models/Conversation.js";
+import redis from "../config/redis.js";
 import Message from "../models/Message.js";
 
 export const getConversations = async (req, res) => {
@@ -15,30 +16,30 @@ export const getConversations = async (req, res) => {
       .limit(limit)
       .lean();
 
-    const unreadCounts = await Message.aggregate([
-      {
-        $match: {
-          sender: { $ne: req.user._id },
-          seen: false,
-        },
-      },
-      {
-        $group: {
-          _id: "$conversation",
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+    const conversationsWithUnread = await Promise.all(
+      conversations.map(async (convo) => {
+        let unread = await redis.get(`unread:${req.user._id}:${convo._id}`);
 
-    const unreadMap = {};
-    unreadCounts.forEach((item) => {
-      unreadMap[item._id.toString()] = item.count;
-    });
+        if (unread === null) {
+          const count = await Message.countDocuments({
+            conversation: convo._id,
+            sender: { $ne: req.user._id },
+            seen: false,
+          });
 
-    const conversationsWithUnread = conversations.map((convo) => ({
-      ...convo,
-      unreadCount: unreadMap[convo._id.toString()] || 0,
-    }));
+          unread = count;
+
+          if (count > 0) {
+            await redis.set(`unread:${req.user._id}:${convo._id}`, count);
+          }
+        }
+
+        return {
+          ...convo,
+          unreadCount: Number(unread) || 0,
+        };
+      }),
+    );
 
     return res.json(conversationsWithUnread);
   } catch (error) {

@@ -2,8 +2,8 @@ import mongoose from "mongoose";
 import Conversation from "../models/Conversation.js";
 import Message from "../models/Message.js";
 import User from "../models/User.js";
+import redis from "../config/redis.js";
 
-const onlineUsers = new Map();
 const activeChats = new Map();
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
@@ -17,24 +17,30 @@ const socketHandler = (io) => {
         console.log("Invalid userId:", userId);
         return;
       }
+      socket.userId = String(userId);
 
-      onlineUsers.set(String(userId), socket.id);
+      await redis.set(`online:${String(userId)}`, socket.id, "EX", 3600);
 
       await User.findByIdAndUpdate(userId, {
         isOnline: true,
         lastSeen: new Date(),
       });
 
-      io.emit("online-users", Array.from(onlineUsers.keys()));
+      const keys = await redis.keys("online:*");
+      const users = keys.map((key) => key.split(":")[1]);
+
+      io.emit("online-users", users);
     });
 
     socket.on(
       "send-message",
       async ({ senderId, receiverId, text, replyTo }) => {
+        const keys = await redis.keys("online:*");
+
         console.log({
           senderId,
           receiverId,
-          onlineUsers: [...onlineUsers.entries()],
+          onlineUsers: keys.map((k) => k.split(":")[1]),
         });
         // find existing conversation
         let conversation = await Conversation.findOne({
@@ -61,7 +67,9 @@ const socketHandler = (io) => {
         await conversation.save();
 
         // emit to receiver
-        const receiverSocket = onlineUsers.get(receiverId);
+        const receiverSocket = await redis.get(`online:${String(receiverId)}`);
+
+        await redis.incr(`unread:${receiverId}:${conversation._id}`);
         if (receiverSocket) {
           io.to(receiverSocket).emit("receive-message", message);
 
@@ -108,23 +116,37 @@ const socketHandler = (io) => {
     });
 
     socket.on("disconnect", async () => {
-      for (const [userId, socketId] of onlineUsers.entries()) {
+      const keys = await redis.keys("online:*");
+
+      for (const key of keys) {
+        const socketId = await redis.get(key);
+
         if (socketId === socket.id) {
-          onlineUsers.delete(userId);
+          const userId = key.split(":")[1];
+
+          await redis.del(key);
 
           await User.findByIdAndUpdate(userId, {
             isOnline: false,
             lastSeen: new Date(),
           });
+
           break;
         }
       }
 
-      io.emit("online-users", Array.from(onlineUsers.keys()));
+      const updatedKeys = await redis.keys("online:*");
+      const users = updatedKeys.map((key) => key.split(":")[1]);
+
+      io.emit("online-users", users);
     });
 
-    socket.on("typing", ({ senderId, receiverId }) => {
-      const receiverSocket = onlineUsers.get(String(receiverId));
+    socket.on("typing", async ({ senderId, receiverId }) => {
+      console.log("typing event", { senderId, receiverId });
+
+      const receiverSocket = await redis.get(`online:${String(receiverId)}`);
+
+      console.log(receiverSocket, "receiversocket");
 
       if (receiverSocket) {
         io.to(receiverSocket).emit("typing", {
@@ -133,8 +155,8 @@ const socketHandler = (io) => {
       }
     });
 
-    socket.on("stop-typing", ({ senderId, receiverId }) => {
-      const receiverSocket = onlineUsers.get(String(receiverId));
+    socket.on("stop-typing", async ({ senderId, receiverId }) => {
+      const receiverSocket = await redis.get(`online:${String(receiverId)}`);
 
       if (receiverSocket) {
         io.to(receiverSocket).emit("stop-typing", {
@@ -145,6 +167,7 @@ const socketHandler = (io) => {
 
     socket.on("mark-seen", async ({ conversationId }) => {
       console.log("MARK SEEN:", conversationId);
+      await redis.del(`unread:${socket.userId}:${conversationId}`);
 
       await Message.updateMany(
         {
