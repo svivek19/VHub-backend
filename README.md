@@ -44,7 +44,30 @@ Backend
 └── Socket Handler (Real-time Engine)
 ```
 
+## System Design Diagram
+
+```mermaid
+flowchart TD
+
+A[Client - React App] -->|REST API| B[Express Server]
+A -->|WebSocket| C[Socket.io Server]
+
+B --> D[Auth Middleware]
+B --> E[Controllers]
+E --> F[MongoDB]
+
+C --> G[Socket Handler]
+G --> F[MongoDB]
+G --> H[Redis Cache]
+
+H -->|Online Users| G
+H -->|Unread Count| G
+
+F -->|Messages / Users / Conversations| E
+
 ---
+
+```
 
 ## Tech Stack
 
@@ -62,41 +85,43 @@ Backend
 ## Folder Structure
 
 ```
+
 VHub-backend/
 │
 ├── config/
-│   ├── db.js
-│   └── redis.js
+│ ├── db.js
+│ └── redis.js
 │
 ├── controllers/
-│   ├── authController.js
-│   ├── userController.js
-│   ├── messageController.js
-│   └── conversationController.js
+│ ├── authController.js
+│ ├── userController.js
+│ ├── messageController.js
+│ └── conversationController.js
 │
 ├── models/
-│   ├── User.js
-│   ├── Message.js
-│   └── Conversation.js
+│ ├── User.js
+│ ├── Message.js
+│ └── Conversation.js
 │
 ├── routes/
-│   ├── authRoutes.js
-│   ├── userRoutes.js
-│   ├── messageRoutes.js
-│   └── conversationRoutes.js
+│ ├── authRoutes.js
+│ ├── userRoutes.js
+│ ├── messageRoutes.js
+│ └── conversationRoutes.js
 │
 ├── middleware/
-│   ├── authMiddleware.js
-│   └── rateLimiter.js
+│ ├── authMiddleware.js
+│ └── rateLimiter.js
 │
 ├── sockets/
-│   └── socketHandler.js
+│ └── socketHandler.js
 │
 ├── scripts/
-│   └── seed.js
+│ └── seed.js
 │
 ├── index.js
 └── package.json
+
 ```
 
 ---
@@ -138,9 +163,11 @@ VHub-backend/
 
 - Redis key:
 
-  ```
-  unread:userId:conversationId
-  ```
+```
+
+unread:userId:conversationId
+
+```
 
 - Incremented on message send
 - Lazy fallback to DB if cache miss
@@ -150,11 +177,11 @@ VHub-backend/
 ### 4. Message Search & Pagination
 
 - Supports:
-  - Full-text regex search
-  - Pagination (skip + limit)
+- Full-text regex search
+- Pagination (skip + limit)
 
 - Optimized sorting strategy:
-  - Reverse after fetch for chronological order
+- Reverse after fetch for chronological order
 
 ---
 
@@ -179,8 +206,8 @@ Supports:
 - Delete for me
 - Delete for everyone
 - Maintains message integrity:
-  - `deletedFor[]`
-  - `isDeletedForEveryone`
+- `deletedFor[]`
+- `isDeletedForEveryone`
 
 ---
 
