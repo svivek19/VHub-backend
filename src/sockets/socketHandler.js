@@ -205,6 +205,28 @@ const socketHandler = (io) => {
       });
     });
 
+    socket.on("edit-message", async ({ messageId, newText, userId }) => {
+      try {
+        const message = await Message.findById(messageId);
+        if (!message) return;
+
+        if (String(message.sender) !== String(userId)) return;
+
+        message.text = newText;
+        message.edited = true;
+
+        await message.save();
+
+        io.emit("message-edited", {
+          messageId,
+          newText,
+          edited: true,
+        });
+      } catch (err) {
+        console.error("edit-message error:", err);
+      }
+    });
+
     socket.on("react-message", async ({ messageId, userId, emoji }) => {
       const message = await Message.findById(messageId);
       if (!message) return;
